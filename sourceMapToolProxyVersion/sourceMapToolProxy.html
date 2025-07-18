@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8"/>
+<title>SourceMap 解析工具（带代理跨域解决 + Tab）</title>
+<style>
+  body { font-family: sans-serif; margin: 20px; background:#222; color:#ddd; }
+  h1 { text-align: center; }
+  .container { max-width: 700px; margin: auto; background:#333; padding:20px; border-radius:8px; }
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid #555;
+    margin-bottom: 10px;
+  }
+  .tab {
+    flex: 1;
+    text-align: center;
+    padding: 10px;
+    cursor: pointer;
+    user-select: none;
+    background: #444;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+  }
+  .tab.active {
+    background: #2a8;
+    font-weight: bold;
+  }
+  .tab-content {
+    display: none;
+  }
+  .tab-content.active {
+    display: block;
+  }
+
+  label { display: block; margin-top: 15px; }
+  input[type="file"], input[type="text"] {
+    width: 100%;
+    margin-top: 5px;
+    padding: 6px;
+    box-sizing: border-box;
+    background: #444;
+    border: none;
+    color: #ddd;
+    border-radius: 4px;
+    font-family: monospace;
+  }
+  button {
+    margin-top: 20px;
+    padding: 10px 0;
+    width: 100%;
+    font-size: 16px;
+    background: #2a8;
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+  }
+  button:disabled {
+    background: #555;
+    cursor: not-allowed;
+  }
+  pre {
+    background: #111;
+    padding: 10px;
+    border-radius: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .error {
+    color: #f66;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+<h1>SourceMap 解析工具</h1>
+<div class="container">
+  <div class="tabs">
+    <div class="tab active" data-tab="local">本地文件</div>
+    <div class="tab" data-tab="remote">远程加载</div>
+  </div>
+
+  <!-- 本地文件 Tab -->
+  <div class="tab-content active" id="local">
+    <label>
+      选择编译后的 JS 文件（可选）
+      <input id="jsFileInput" type="file" accept=".js" />
+    </label>
+
+    <label>
+      选择 SourceMap 文件 (.map)
+      <input id="mapFileInput" type="file" accept=".map,.json" />
+    </label>
+    <div id="localLoadResult"></div>
+  </div>
+
+  <!-- 远程加载 Tab -->
+  <div class="tab-content" id="remote">
+    <label>
+      远程 JS 文件 URL（可选）
+      <input id="remoteJsUrl" type="text" placeholder="https://example.com/app.js" />
+    </label>
+    <label>
+      远程 SourceMap URL（必填）
+      <input id="remoteMapUrl" type="text" placeholder="https://example.com/app.js.map" />
+    </label>
+    <button id="loadRemoteBtn" disabled>通过代理加载远程 SourceMap</button>
+    <div id="remoteLoadResult"></div>
+  </div>
+
+  <!-- 公共行列号输入和解析按钮 -->
+  <label style="margin-top:30px;">
+    编译后代码行列号 (格式：行:列，比如 1:324501)
+    <input id="lineColumnInput" type="text" placeholder="1:0" />
+  </label>
+
+  <button id="parseBtn" disabled>解析</button>
+
+  <div id="result"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/source-map@0.7.4/dist/source-map.min.js"></script>
+<script>
+  sourceMap.SourceMapConsumer.initialize({
+    'lib/mappings.wasm': 'https://cdn.jsdelivr.net/npm/source-map@0.7.4/lib/mappings.wasm'
+  });
+
+  // Tab切换逻辑
+  const tabs = document.querySelectorAll('.tab');
+  const tabContents = document.querySelectorAll('.tab-content');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const selected = tab.dataset.tab;
+      tabContents.forEach(tc => {
+        tc.id === selected ? tc.classList.add('active') : tc.classList.remove('active');
+      });
+      resetStateByTab(selected);
+    });
+  });
+
+  // DOM 元素引用
+  const remoteJsUrlInput = document.getElementById('remoteJsUrl');
+  const remoteMapUrlInput = document.getElementById('remoteMapUrl');
+  const loadRemoteBtn = document.getElementById('loadRemoteBtn');
+  const remoteLoadResult = document.getElementById('remoteLoadResult');
+
+  const jsFileInput = document.getElementById('jsFileInput');
+  const mapFileInput = document.getElementById('mapFileInput');
+  const localLoadResult = document.getElementById('localLoadResult');
+
+  const lineColumnInput = document.getElementById('lineColumnInput');
+  const parseBtn = document.getElementById('parseBtn');
+  const resultDiv = document.getElementById('result');
+
+  let mapContent = null;
+  let currentMode = 'local';
+
+  // 本地文件加载
+  mapFileInput.addEventListener('change', () => {
+    if (currentMode !== 'local') return;
+    const file = mapFileInput.files[0];
+    localLoadResult.innerHTML = '';
+    mapContent = null;
+    parseBtn.disabled = true;
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        mapContent = JSON.parse(e.target.result);
+        localLoadResult.innerHTML = '<pre>本地 SourceMap 文件已加载成功</pre>';
+        parseBtn.disabled = validateInputs();
+        remoteLoadResult.innerHTML = '';
+        resultDiv.innerHTML = '';
+      } catch (error) {
+        mapContent = null;
+        localLoadResult.innerHTML = '<div class="error">错误：本地 SourceMap 文件格式不正确。</div>';
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // 代理加载按钮启用逻辑
+  function checkRemoteInputs() {
+    loadRemoteBtn.disabled = !remoteMapUrlInput.value.trim();
+  }
+  remoteJsUrlInput.addEventListener('input', checkRemoteInputs);
+  remoteMapUrlInput.addEventListener('input', checkRemoteInputs);
+
+  loadRemoteBtn.addEventListener('click', async () => {
+    if (currentMode !== 'remote') return;
+    const rawMapUrl = remoteMapUrlInput.value.trim();
+    if (!rawMapUrl) return;
+
+    // 代理服务器地址（请确认代理服务端口和地址）
+    const proxyBase = 'http://localhost:3000/proxy?url=';
+    const proxyUrl = proxyBase + encodeURIComponent(rawMapUrl);
+
+    remoteLoadResult.innerHTML = '<pre>正在通过代理加载远程 SourceMap ...</pre>';
+    mapContent = null;
+    parseBtn.disabled = true;
+    try {
+      const resp = await fetch(proxyUrl, {cache: 'no-cache'});
+      if (!resp.ok) throw new Error(`HTTP 状态码 ${resp.status}`);
+      const json = await resp.json();
+      mapContent = json;
+      remoteLoadResult.innerHTML = '<pre>远程 SourceMap 文件加载成功（通过代理）</pre>';
+      localLoadResult.innerHTML = '';
+      parseBtn.disabled = validateInputs();
+      resultDiv.innerHTML = '';
+    } catch(err) {
+      remoteLoadResult.innerHTML = `<div class="error">通过代理加载远程 SourceMap 失败：${err.message}</div>`;
+    }
+  });
+
+  // 校验行列号格式
+  function validateInputs() {
+    if (!mapContent) return false;
+    const val = lineColumnInput.value.trim();
+    if (!val) return false;
+    const arr = val.split(':');
+    if (arr.length !== 2) return false;
+    const line = parseInt(arr[0], 10);
+    const col = parseInt(arr[1], 10);
+    if (!Number.isInteger(line) || line < 1) return false;
+    if (!Number.isInteger(col) || col < 0) return false;
+    return true;
+  }
+
+  lineColumnInput.addEventListener('input', () => {
+    parseBtn.disabled = !validateInputs();
+    resultDiv.innerHTML = '';
+  });
+
+  parseBtn.addEventListener('click', async () => {
+    resultDiv.innerHTML = '<pre>解析中...</pre>';
+    try {
+      const val = lineColumnInput.value.trim();
+      const [lineStr, colStr] = val.split(':');
+      const line = parseInt(lineStr, 10);
+      const column = parseInt(colStr, 10);
+
+      const consumer = await new sourceMap.SourceMapConsumer(mapContent);
+      const pos = consumer.originalPositionFor({
+        line: line,
+        column: column,
+        bias: sourceMap.SourceMapConsumer.LEAST_UPPER_BOUND
+      });
+      consumer.destroy();
+
+      if (pos.source === null) {
+        resultDiv.innerHTML = '<div class="error">未找到对应的源文件位置。</div>';
+      } else {
+        let html = `<pre>对应源文件路径: ${pos.source}\n行号: ${pos.line}\n列号: ${pos.column}`;
+        if (pos.name) {
+          html += `\n符号名: ${pos.name}`;
+        }
+        html += '</pre>';
+        resultDiv.innerHTML = html;
+      }
+    } catch (err) {
+      resultDiv.innerHTML = `<div class="error">解析出错：${err.message}</div>`;
+    }
+  });
+
+  function resetStateByTab(mode) {
+    currentMode = mode;
+    mapContent = null;
+    parseBtn.disabled = true;
+    resultDiv.innerHTML = '';
+    lineColumnInput.value = '';
+    localLoadResult.innerHTML = '';
+    remoteLoadResult.innerHTML = '';
+    if (mode === 'local') {
+      jsFileInput.value = '';
+      mapFileInput.value = '';
+      remoteJsUrlInput.value = '';
+      remoteMapUrlInput.value = '';
+      loadRemoteBtn.disabled = true;
+    } else if (mode === 'remote') {
+      jsFileInput.value = '';
+      mapFileInput.value = '';
+    }
+  }
+</script>
+</body>
+</html>
