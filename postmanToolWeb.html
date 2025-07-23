@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>简易 Postman（CodeMirror 版，带初始值）</title>
+    <title>简易 Postman</title>
     <style>
         * {
             box-sizing: border-box;
@@ -114,7 +114,12 @@
             background: #fff;
             padding: 18px;
             border-radius: 6px;
-            margin-top: 20px
+            padding-top: 5px;
+        }
+
+        .api-res-box {
+            padding-bottom: 8px;
+            border-bottom: 1px solid #ddd;
         }
 
         .resp-title {
@@ -122,6 +127,9 @@
             margin: 8px 0;
             display: flex;
             align-items: center
+        }
+        #statusLine {
+            color: rgb(255, 154, 3);
         }
 
         pre {
@@ -132,6 +140,33 @@
             white-space: pre-wrap;
             overflow-x: auto;
             margin: 0
+        }
+        /* 新增加载动画样式 */
+        .loading-mask {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0,0, 0.5);
+            z-index: 9999;
+        }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #61dafb;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
         }
     </style>
 
@@ -150,6 +185,7 @@
 
 <body>
     <header>简易 Postman</header>
+    <div class="loading-mask" id="loading"><div class="loading"></div></div>
 
     <div class="container">
 
@@ -212,6 +248,7 @@
 
         <!-- 响应区 -->
         <div class="response" id="respBox">
+            <h4 class="api-res-box">★ 响应结果:</h4>
             <div class="resp-title" id="statusLine"></div>
 
             <div class="resp-title">Headers
@@ -292,6 +329,7 @@
 
         /* 发送请求 */
         document.getElementById('send').addEventListener('click', async () => {
+            const loading = document.getElementById('loading');
             const method = document.getElementById('method').value.trim();
             const url = document.getElementById('url').value.trim();
             const rawBody = cm.getValue();
@@ -320,6 +358,7 @@
             const t0 = performance.now();
             let resp;
             try {
+                loading && (loading.style.display = 'block');
                 resp = await fetch(url, opt);
             } catch (err) {
                 showError(err);
@@ -345,12 +384,21 @@
 
         /* 展示 & 错误 */
         function showResponse(body, status, txt, headersObj, ms) {
-            document.getElementById('respBox').style.display = 'block';
+            const respBoxEle = document.getElementById('respBox');
+            respBoxEle.style.display = 'block';
             document.getElementById('statusLine').textContent = `${status} ${txt} — ${ms} ms`;
             let h = '';
             headersObj.forEach ? headersObj.forEach((v, k) => h += `${k}: ${v}\n`) : h = headersObj;
             document.getElementById('respHeaders').textContent = h || '(none)';
             document.getElementById('respBody').textContent = formatBody(body) || '(none)';
+            const loading = document.getElementById('loading');
+            loading && (loading.style.display = 'none');
+            // 将respBoxEle滚动到视口
+            setTimeout(() => {
+                respBoxEle.scrollIntoView({
+                    behavior: 'smooth'
+                });
+            }, 1000);
         }
 
         function showError(err) {
