@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>二维码生成与解析工具</title>
+
+<!-- 依赖 -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script src="https://unpkg.com/qr-code-styling@1.5.0/lib/qr-code-styling.js"></script>
+<script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
+<!-- 把 SVG 渲染到 canvas 用 -->
+<script src="https://cdn.jsdelivr.net/npm/canvg@3.0.7/lib/umd.min.js"></script>
+
+<style>
+/* =================  主题变量（日间默认）  ================= */
+:root{
+    --accent:#0066ff;
+    --accent-hover:#0050e0;
+    --accent-active:#003fbd;
+    --secondary:#7d8597;
+    --danger:#e15f5f;
+    --success:#11a066;
+
+    --border:#d3d7de;
+    --bg:#ffffff;
+    --bg-alt:#f3f6fa;
+    --text:#1f2329;
+
+    --control-h:42px;
+}
+/* =================  夜间主题  ================= */
+.dark{
+    --accent:#4f8dff;
+    --accent-hover:#3d7cff;
+    --accent-active:#2c6fff;
+    --secondary:#858fa5;
+    --danger:#ff6c6c;
+    --success:#26c58d;
+
+    --border:#3d3f45;
+    --bg:#1e1e20;
+    --bg-alt:#2b2d31;
+    --text:#e7e9ed;
+}
+
+/* =================  通用样式  ================= */
+*{box-sizing:border-box}
+html,body{
+    margin:0;padding:0;
+    font-family:Poppins,Arial,Helvetica,sans-serif;
+    background:var(--bg);color:var(--text);
+    transition:background .25s,color .25s;
+}
+h1{font-weight:600;margin:1.4rem 0;text-align:center}
+
+button,
+input[type="text"],
+input[type="number"],
+select{
+    height:var(--control-h);
+    line-height:calc(var(--control-h) - 2px);
+    font-size:1rem;
+    border-radius:6px;
+    transition:background .2s,border .2s,color .2s;
+}
+
+/* --------  顶栏与切换按钮  -------- */
+.topbar{
+    max-width:1200px;margin:0 auto;padding:0 .8rem;
+    display:flex;justify-content:flex-end;align-items:center;
+}
+#themeToggle{
+    cursor:pointer;font-size:1.35rem;user-select:none;
+    width:46px;height:46px;display:flex;align-items:center;justify-content:center;
+    border:1px solid var(--border);border-radius:50%;background:var(--bg-alt);
+    transition:.2s;
+}
+#themeToggle:hover{background:var(--accent);color:#fff}
+
+/* --------  Tabs  -------- */
+.tabs{
+    display:flex;justify-content:center;gap:1rem;margin:1.2rem 0 1.5rem;
+}
+.tab{
+    padding:.6rem 1.8rem;border:1px solid var(--border);background:var(--bg-alt);
+    cursor:pointer;border-radius:8px 8px 0 0;user-select:none;transition:.15s;
+}
+.tab.active{background:var(--bg);border-bottom-color:var(--bg);font-weight:600}
+
+/* --------  卡片、布局  -------- */
+.card{
+    max-width:1200px;margin:0 auto;background:var(--bg);
+    border:1px solid var(--border);border-radius:12px;padding:2rem;display:none;
+    transition:background .25s,border .25s;
+}
+.card.show{display:block}
+
+.flex{display:flex;flex-wrap:wrap;gap:2rem}
+.left-panel{flex:1 1 360px;min-width:280px}
+.right-panel{flex:1 1 320px;display:flex;flex-direction:column;align-items:center;gap:1rem}
+
+/* --------  表单行  -------- */
+.form-item{
+    display:flex;align-items:center;gap:.8rem;margin-bottom:1rem;flex-wrap:wrap;
+}
+.form-item label{
+    width:120px;min-width:120px;font-size:.9rem;font-weight:500;
+}
+.form-item>*:not(label){flex:1}
+
+input[type="text"],input[type="number"],select{
+    width:100%;padding:0 .8rem;border:1px solid var(--border);
+    background:var(--bg-alt);color:var(--text);
+}
+input[type="text"]:focus,input[type="number"]:focus,select:focus{
+    border-color:var(--accent);outline:none;
+}
+input[type="color"]{
+    padding:0;width:48px;height:var(--control-h);
+    border:1px solid var(--border);border-radius:6px;cursor:pointer;
+}
+
+/* --------  按钮  -------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:0 1.6rem;border:none;cursor:pointer;font-weight:500}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-primary:active{background:var(--accent-active)}
+.btn-secondary{background:var(--secondary);color:#fff}
+.btn-secondary:hover{filter:brightness(1.1)}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-danger:hover{filter:brightness(1.1)}
+.btn-disabled{opacity:.5;cursor:not-allowed}
+#downloadBtn{width:200px}
+
+/* --------  自定义文件上传  -------- */
+.file-wrap{position:relative;display:inline-block;width:100%}
+.file-wrap input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+/* =================  解析区增强  ================= */
+.parse-flex{display:flex;flex-wrap:wrap;gap:2rem}
+.parse-left{flex:1 1 260px;min-width:240px}
+.parse-right{flex:2 1 380px;min-width:260px;display:flex;flex-direction:column;gap:1rem}
+
+#dropZone{
+    border:2px dashed var(--border);padding:2.5rem 1rem;text-align:center;
+    border-radius:12px;background:var(--bg-alt);cursor:pointer;transition:.15s;
+}
+#dropZone.dragover{background:rgba(0,102,255,.08)}
+#dropZone img{max-width:100%;max-height:160px;border-radius:8px;margin-top:.8rem}
+
+#parsedResultBox{
+    display:flex;flex-direction:column;gap:.6rem
+}
+#parsedResult{
+    width:100%;height:150px;resize:vertical;border:1px solid var(--border);
+    border-radius:8px;padding:.6rem;font-size:.9rem;background:var(--bg-alt);
+    color:var(--text);
+}
+#parsedResult.success{border-color:var(--success)}
+#parsedResult.fail{border-color:var(--danger)}
+
+.result-actions{display:flex;gap:.8rem}
+footer{margin:2rem 0;text-align:center;font-size:.85rem;color:#8b8f97}
+
+/* 让生成的二维码四周有外边框（不是二维码本身的 margin） */
+#qrcode canvas,
+#qrcode img,
+#qrcode svg{
+    border:4px solid var(--border);
+    border-radius:8px;
+}
+
+/* --------  预览蒙层  -------- */
+.preview-wrap{position:relative;display:inline-block}
+#qrMask{
+    position:absolute;inset:0;
+    background:rgba(0,0,0,.55);
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;font-size:1rem;text-align:center;
+    padding:0 1rem;border-radius:8px;
+    pointer-events:none;
+    opacity:0;transition:opacity .2s;
+}
+#qrMask.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<!-- 顶部切换按钮 -->
+<div class="topbar">
+    <div id="themeToggle" title="切换主题">🌙</div>
+</div>
+
+<h1>二维码生成与解析工具</h1>
+
+<!-- Tabs -->
+<div class="tabs">
+    <div class="tab active" data-panel="generate">生成二维码</div>
+    <div class="tab" data-panel="parse">解析二维码</div>
+</div>
+
+<!-- 生成卡片 -->
+<div class="card show" id="generateCard">
+    <div class="flex">
+        <!-- 左侧配置 -->
+        <div class="left-panel">
+
+            <div class="form-item">
+                <label>二维码内容</label>
+                <input type="text" id="qrText" placeholder="请输入要编码的文本/链接">
+            </div>
+
+            <div class="form-item">
+                <label>尺寸 (px)</label>
+                <input type="number" id="qrSize" value="300" min="150" max="1000">
+            </div>
+
+            <div class="form-item">
+                <label>容错等级</label>
+                <select id="qrEcc">
+                    <option>L (7%)</option>
+                    <option selected>M (15%)</option>
+                    <option>Q (25%)</option>
+                    <option>H (30%)</option>
+                </select>
+            </div>
+
+            <div class="form-item">
+                <label>点阵形状</label>
+                <select id="qrDotType">
+                    <option value="square">square</option>
+                    <option value="dots">dots</option>
+                    <option value="rounded">rounded</option>
+                    <option value="extra-rounded">extra-rounded</option>
+                </select>
+                <input type="color" id="qrDotColor" value="#000000">
+            </div>
+
+            <div class="form-item">
+                <label>背景颜色</label>
+                <input type="color" id="qrBgColor" value="#ffffff">
+            </div>
+
+            <div class="form-item">
+                <label>定位角(外)</label>
+                <select id="qrCornerSquareType">
+                    <option value="square">square</option>
+                    <option value="extra-rounded">extra-rounded</option>
+                </select>
+                <input type="color" id="qrCornerSquareColor" value="#000000">
+            </div>
+
+            <div class="form-item">
+                <label>定位角(内)</label>
+                <select id="qrCornerDotType">
+                    <option value="square">square</option>
+                    <option value="dots">dots</option>
+                    <option value="rounded">rounded</option>
+                </select>
+                <input type="color" id="qrCornerDotColor" value="#000000">
+            </div>
+
+            <div class="form-item">
+                <label>Logo</label>
+                <span class="file-wrap">
+                    <button class="btn btn-secondary" style="width:100%">选择 Logo 图片</button>
+                    <input type="file" id="logoInput" accept="image/*">
+                </span>
+                <button id="removeLogo" class="btn btn-danger" style="flex:0 0 110px">移除</button>
+            </div>
+
+            <div style="text-align:right;margin-top:1.2rem">
+                <button id="generateBtn" class="btn btn-primary" style="width:160px">生成 / 更新</button>
+            </div>
+        </div>
+
+        <!-- 右侧预览 -->
+        <div class="right-panel">
+            <div class="preview-wrap">
+                <div id="qrcode"></div>
+                <div id="qrMask">请输入生成二维码内容</div>
+            </div>
+            <button id="downloadBtn" class="btn btn-primary">下载 PNG</button>
+        </div>
+    </div>
+</div>
+
+<!-- 解析卡片 -->
+<div class="card" id="parseCard">
+    <div class="parse-flex">
+        <!-- 上传区 -->
+        <div class="parse-left">
+            <div id="dropZone">
+                <svg width="70" height="70" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" style="opacity:.6">
+                    <path d="M21 16l4-4 4 4M25 12v9"/>
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <path d="M16 5h6a2 2 0 0 1 2 2v6M3 10h18M10 3v18"/>
+                </svg>
+                <p style="margin:.8rem 0 0">点击或拖拽二维码图片到此 (支持 SVG)</p>
+                <input type="file" id="fileInput" accept="image/*,.svg" style="display:none">
+            </div>
+        </div>
+
+        <!-- 结果区 -->
+        <div class="parse-right">
+            <div id="parsedResultBox">
+                <textarea id="parsedResult" placeholder="解析结果将显示在此处" readonly></textarea>
+                <div class="result-actions">
+                    <button id="copyBtn" class="btn btn-secondary btn-disabled" disabled>复制</button>
+                    <button id="downloadTxtBtn" class="btn btn-primary btn-disabled" disabled>下载 TXT</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <canvas id="canvas" style="display:none"></canvas>
+</div>
+
+<footer>Made with ❤️ &nbsp;by&nbsp; me</footer>
+
+<script>
+$(function(){
+
+    /* ============ 主题切换 ============ */
+    const toggleBtn = $('#themeToggle');
+    const rootEl    = $('html');
+    const THEME_KEY = 'qr_theme';
+    if(localStorage.getItem(THEME_KEY)==='dark'){
+        rootEl.addClass('dark'); toggleBtn.text('☀️');
+    }
+    toggleBtn.on('click',function(){
+        rootEl.toggleClass('dark');
+        const isDark=rootEl.hasClass('dark');
+        toggleBtn.text(isDark?'☀️':'🌙');
+        localStorage.setItem(THEME_KEY,isDark?'dark':'light');
+    });
+
+    /* ============ TAB 切换 ============ */
+    $('.tab').on('click',function(){
+        $('.tab').removeClass('active'); $(this).addClass('active');
+        const panel=$(this).data('panel');
+        $('#generateCard').toggleClass('show',panel==='generate');
+        $('#parseCard').toggleClass('show',panel==='parse');
+    });
+
+    /* ============ 初始化二维码对象 ============ */
+    const BORDER_MARGIN = 20;   // 四周空白
+    let qrCode = new QRCodeStyling({
+        width:300,height:300,
+        margin:BORDER_MARGIN,
+        data:" ",
+        qrOptions:{errorCorrectionLevel:"M"},
+        dotsOptions:{type:"square",color:"#000"},
+        backgroundOptions:{color:"#ffffff"},
+        cornersSquareOptions:{type:"square",color:"#000"},
+        cornersDotOptions:{type:"square",color:"#000"}
+    });
+    qrCode.append(document.getElementById('qrcode'));
+
+    /* ============ 更新二维码 ============ */
+    function updateQRCode(){
+        const text  = $('#qrText').val().trim();
+        const empty = text === "";
+
+        const size  = +$('#qrSize').val()||300;
+        qrCode.update({
+            width:size,
+            height:size,
+            margin:BORDER_MARGIN,
+            data: empty ? " " : text,
+            qrOptions:{errorCorrectionLevel:$('#qrEcc').val().charAt(0)},
+            dotsOptions:{type:$('#qrDotType').val(),color:$('#qrDotColor').val()},
+            backgroundOptions:{color:$('#qrBgColor').val()},
+            cornersSquareOptions:{type:$('#qrCornerSquareType').val(),color:$('#qrCornerSquareColor').val()},
+            cornersDotOptions:{type:$('#qrCornerDotType').val(),color:$('#qrCornerDotColor').val()}
+        });
+
+        // 显/隐蒙层
+        $('#qrMask').toggleClass('show', empty);
+    }
+    $('#generateBtn').on('click',updateQRCode);
+    $('.left-panel').on('change keyup','input:not(#logoInput):not([type=file]),select',updateQRCode);
+
+    /* ============ Logo 处理 ============ */
+    $('#logoInput').on('change',function(e){
+        const file=e.target.files[0]; if(!file) return;
+        const reader=new FileReader();
+        reader.onload=ev=>qrCode.update({image:ev.target.result,imageOptions:{margin:6}});
+        reader.readAsDataURL(file);
+    });
+    $('#removeLogo').click(()=>{qrCode.update({image:""});$('#logoInput').val('');});
+
+    /* ============ 下载二维码 ============ */
+    $('#downloadBtn').click(()=>qrCode.download({name:"qrcode",extension:"png"}));
+
+    /* ============ 解析端  ============ */
+    const dropZone      = document.getElementById('dropZone');
+    const fileInput     = document.getElementById('fileInput');
+    const resultArea    = $('#parsedResult');
+    const copyBtn       = $('#copyBtn');
+    const downloadTxtBtn= $('#downloadTxtBtn');
+
+    dropZone.addEventListener('click',()=>fileInput.click());
+    ['dragenter','dragover'].forEach(evt=>
+        dropZone.addEventListener(evt,e=>{e.preventDefault();dropZone.classList.add('dragover');})
+    );
+    ['dragleave','drop'].forEach(evt=>
+        dropZone.addEventListener(evt,e=>{e.preventDefault();dropZone.classList.remove('dragover');})
+    );
+    dropZone.addEventListener('drop',e=>{
+        const f=e.dataTransfer.files[0];
+        if(f) handleFile(f);
+    });
+    fileInput.addEventListener('change',e=>{
+        const f=e.target.files[0];
+        if(f) handleFile(f);
+    });
+
+    /* 统一处理 SVG / 位图 */
+    function handleFile(file){
+        const reader=new FileReader();
+
+        /* SVG */
+        if(file.type==='image/svg+xml' || file.name.toLowerCase().endsWith('.svg')){
+            reader.readAsText(file);
+            reader.onload=e=>{
+                const svgText=e.target.result;
+                showThumbnail('data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svgText))));
+
+                const cvs=document.getElementById('canvas');
+                const ctx=cvs.getContext('2d');
+                const wMatch=svgText.match(/width="([\d.]+)"/);
+                const hMatch=svgText.match(/height="([\d.]+)"/);
+                const width =wMatch?parseFloat(wMatch[1]):1024;
+                const height=hMatch?parseFloat(hMatch[1]):1024;
+                cvs.width=width;cvs.height=height;
+
+                canvg.Canvg.fromString(ctx,svgText).render().then(()=>parseCanvas());
+            };
+        }
+        /* 位图 */
+        else{
+            reader.readAsDataURL(file);
+            reader.onload=e=>{
+                showThumbnail(e.target.result);
+
+                const img=new Image();
+                img.onload=()=>{
+                    const cvs=document.getElementById('canvas');
+                    const ctx=cvs.getContext('2d');
+                    cvs.width=img.width;cvs.height=img.height;
+                    ctx.drawImage(img,0,0);
+                    parseCanvas();
+                };
+                img.src=e.target.result;
+            };
+        }
+    }
+
+    /* 从 canvas 解析二维码 */
+    function parseCanvas(){
+        const cvs=document.getElementById('canvas');
+        const ctx=cvs.getContext('2d');
+        const id=ctx.getImageData(0,0,cvs.width,cvs.height);
+        const code=jsQR(id.data,cvs.width,cvs.height);
+        if(code){
+            resultArea.val(code.data).removeClass('fail').addClass('success');
+            enableResultBtns(true);
+        }else{
+            resultArea.val('未识别二维码').removeClass('success').addClass('fail');
+            enableResultBtns(false);
+        }
+    }
+
+    /* 缩略图展示 */
+    function showThumbnail(src){
+        const old=document.querySelector('#dropZone img');
+        old&&old.remove();
+        const img=document.createElement('img');
+        img.src=src;
+        dropZone.appendChild(img);
+    }
+
+    /* 复制 / 下载按钮状态 */
+    function enableResultBtns(enable){
+        copyBtn.prop('disabled',!enable).toggleClass('btn-disabled',!enable);
+        downloadTxtBtn.prop('disabled',!enable).toggleClass('btn-disabled',!enable);
+    }
+
+    /* 复制到剪贴板 */
+    copyBtn.on('click',function(){
+        const text=resultArea.val();
+        if(!text) return;
+        navigator.clipboard ? navigator.clipboard.writeText(text)
+        .then(()=>toast('已复制')) : fallbackCopy(text);
+    });
+    function fallbackCopy(text){
+        const temp=document.createElement('textarea');
+        temp.value=text;document.body.appendChild(temp);
+        temp.select();document.execCommand('copy');document.body.removeChild(temp);
+        toast('已复制');
+    }
+
+    /* 下载 TXT */
+    downloadTxtBtn.on('click',function(){
+        const text=resultArea.val();
+        if(!text) return;
+        const blob=new Blob([text],{type:'text/plain'});
+        const a=document.createElement('a');
+        const ts=new Date().toISOString().replace(/[:T]/g,'-').split('.')[0];
+        a.href=URL.createObjectURL(blob);
+        a.download='qr-result-'+ts+'.txt';
+        document.body.appendChild(a);
+        a.click();document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+    });
+
+    /* Toast 提示 */
+    function toast(msg){
+        const div=$('<div>').text(msg).css({
+            position:'fixed',top:'20px',right:'20px',padding:'10px 16px',
+            background:'var(--accent)',color:'#fff',borderRadius:'6px',zIndex:9999,
+            boxShadow:'0 4px 12px rgba(0,0,0,.15)',opacity:0
+        });
+        $('body').append(div);
+        div.animate({opacity:1},200).delay(1200).animate({opacity:0},300,()=>div.remove());
+    }
+
+    /* 初始化状态 */
+    enableResultBtns(false);
+    updateQRCode();   // 首次调用以显示蒙层
+});
+</script>
+</body>
+</html>
