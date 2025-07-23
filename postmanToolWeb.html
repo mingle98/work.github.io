@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>简易 Postman</title>
+<style>
+    *{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}
+    body{margin:0;background:#f5f5f5}
+    header{background:#20232a;color:#61dafb;padding:12px 24px;font-size:20px}
+    .container{padding:20px;max-width:1200px;margin:auto}
+
+    .row{display:flex;gap:8px;margin-bottom:14px}
+    .row.column{flex-direction:column}
+    select,input[type=text]{padding:6px 10px;font-size:14px;border:1px solid #ccc;border-radius:4px}
+    button{cursor:pointer;border:none;border-radius:4px;background:#61dafb;color:#fff;padding:8px 14px}
+    button:hover{background:#4dbdff}
+    .btn-danger{background:#e74c3c}
+    .btn-danger:hover{background:#d62c1a}
+    .btn-copy{background:#888;font-size:12px;padding:4px 10px;margin-left:6px}
+    .btn-copy:hover{background:#666}
+    .btn-gray{background:#999}
+    .btn-gray:hover{background:#777}
+
+    table{width:100%;border-collapse:collapse}
+    th,td{border:1px solid #ddd;padding:6px}
+    th{background:#eee;text-align:left}
+
+    /* Ace 编辑器位置 */
+    #bodyEditor{height:220px;width:100%;border:1px solid #ccc;border-radius:4px}
+
+    .response{display:none;background:#fff;padding:18px;border-radius:6px;margin-top:20px}
+    .resp-title{font-weight:bold;margin:8px 0;display:flex;align-items:center}
+    pre{background:#272822;color:#f8f8f2;padding:12px;border-radius:4px;white-space:pre-wrap;overflow-x:auto;margin:0}
+</style>
+
+<!-- Ace Editor（取消 integrity 避免 SRI 报错） -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.23.4/ace.min.js"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.23.4/ext-language_tools.min.js"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+</head>
+<body>
+<header>简易 Postman</header>
+
+<div class="container">
+
+    <!-- 请求行 -->
+    <div class="row">
+        <select id="method">
+            <option>GET</option><option>POST</option><option>PUT</option>
+            <option>PATCH</option><option>DELETE</option>
+            <option>HEAD</option><option>OPTIONS</option>
+        </select>
+        <input type="text" id="url" placeholder="https://api.example.com/endpoint" style="flex:1">
+        <button id="send">Send</button>
+        <button id="mock" class="btn-gray">Mock</button>
+    </div>
+
+    <!-- Header 编辑区 -->
+    <div class="row column">
+        <label>Headers：</label>
+        <table>
+            <thead>
+                <tr><th style="width:45%">Key</th><th>Value</th><th style="width:60px"></th></tr>
+            </thead>
+            <tbody id="headerBody">
+                <tr>
+                    <td><input type="text" placeholder="Content-Type"></td>
+                    <td><input type="text" placeholder="application/json"></td>
+                    <td><button class="btn-danger" onclick="removeHeader(this)">X</button></td>
+                </tr>
+            </tbody>
+        </table>
+        <button style="width:110px;margin-top:6px" onclick="addHeader()">+ Header</button>
+    </div>
+
+    <!-- Content-Type 选择区 -->
+    <div class="row">
+        <label style="align-self:center">Content-Type：</label>
+        <select id="contentType" style="min-width:240px">
+            <option value="">(不指定)</option>
+            <option>application/json</option>
+            <option>application/x-www-form-urlencoded</option>
+            <option>multipart/form-data</option>
+            <option>text/plain</option>
+            <option>application/xml</option>
+        </select>
+        <button id="formatJson" class="btn-gray" title="格式化 JSON">Format JSON</button>
+    </div>
+
+    <!-- Body 输入（Ace） -->
+    <div class="row column">
+        <label>Body (raw)：</label>
+        <div id="bodyEditor">// 在此输入 JSON、XML、表单串等原始数据</div>
+    </div>
+
+    <!-- 响应展示 -->
+    <div class="response" id="respBox">
+        <div class="resp-title" id="statusLine"></div>
+
+        <div class="resp-title">Headers
+            <button class="btn-copy" data-target="respHeaders">复制</button>
+        </div>
+        <pre id="respHeaders"></pre>
+
+        <div class="resp-title">Body
+            <button class="btn-copy" data-target="respBody">复制</button>
+        </div>
+        <pre id="respBody"></pre>
+    </div>
+</div>
+
+<script>
+/* ===== Ace 编辑器初始化 ===== */
+const editor = ace.edit("bodyEditor");
+editor.session.setMode("ace/mode/json");
+editor.setTheme("ace/theme/chrome");
+editor.setOptions({
+  enableBasicAutocompletion: true,
+  enableLiveAutocompletion: true,
+  enableSnippets: true,
+  behavioursEnabled: true,
+  wrap: true,
+  tabSize: 2
+});
+
+/* 失焦时自动尝试格式化 JSON */
+editor.on('blur', () => tryFormatJson());
+
+/* 点击 Format JSON 手动格式化 */
+document.getElementById('formatJson').onclick = tryFormatJson;
+function tryFormatJson(){
+    const txt = editor.getValue().trim();
+    if(!txt) return;
+    try{
+        const formatted = JSON.stringify(JSON.parse(txt), null, 2);
+        editor.setValue(formatted, -1);
+    }catch(e){
+        alert('不是有效 JSON：' + e.message);
+    }
+}
+
+/* ===== Header 增/删 ===== */
+function addHeader(){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td><input type="text" placeholder="Key"></td>
+        <td><input type="text" placeholder="Value"></td>
+        <td><button class="btn-danger" onclick="removeHeader(this)">X</button></td>`;
+    document.getElementById('headerBody').appendChild(tr);
+}
+function removeHeader(btn){ btn.parentNode.parentNode.remove(); }
+
+/* ===== 复制按钮 ===== */
+document.addEventListener('click', e => {
+    if(e.target.classList.contains('btn-copy')){
+        const id = e.target.dataset.target;
+        const txt = document.getElementById(id).textContent;
+        navigator.clipboard.writeText(txt).then(()=>{
+            e.target.textContent = '已复制';
+            setTimeout(()=>e.target.textContent='复制', 1000);
+        });
+    }
+});
+
+/* ===== 发送请求 ===== */
+document.getElementById('send').addEventListener('click', async () => {
+    const method   = document.getElementById('method').value.trim();
+    const url      = document.getElementById('url').value.trim();
+    const rawBody  = editor.getValue();
+    const chosenCT = document.getElementById('contentType').value;
+
+    if(!url){ alert('请输入 URL！'); return; }
+
+    /* 收集 Headers */
+    const headers = {};
+    document.querySelectorAll('#headerBody tr').forEach(tr=>{
+        const k = tr.children[0].firstElementChild.value.trim();
+        const v = tr.children[1].firstElementChild.value.trim();
+        if(k) headers[k] = v;
+    });
+    if(chosenCT) headers['Content-Type'] = chosenCT;
+
+    const options = { method, headers };
+    if(method!=='GET' && method!=='HEAD' && rawBody!=='') options.body = rawBody;
+
+    const t0 = performance.now();
+    let resp;
+    try{
+        resp = await fetch(url, options);
+    }catch(err){
+        showError(err);
+        return;
+    }
+    const ms = (performance.now() - t0).toFixed(0);
+    showResponse(await resp.text(), resp.status, resp.statusText, resp.headers, ms);
+});
+
+/* ===== Mock 按钮 ===== */
+document.getElementById('mock').addEventListener('click', () => {
+    const mockJson = { id:1, name:"张三", email:"zhangsan@example.com", role:"admin" };
+    const headers  = new Headers({ 'content-type':'application/json', 'x-mock':'true' });
+    showResponse(JSON.stringify(mockJson), 200, 'OK', headers, 0);
+});
+
+/* ===== 展示 / 错误处理 ===== */
+function showResponse(body, status, statusText, headersObj, ms){
+    document.getElementById('respBox').style.display = 'block';
+    document.getElementById('statusLine').textContent = `${status} ${statusText} — ${ms} ms`;
+
+    let headerTxt = '';
+    headersObj.forEach ? headersObj.forEach((v,k)=> headerTxt += `${k}: ${v}\n`)
+                       : headerTxt = headersObj;
+    document.getElementById('respHeaders').textContent = headerTxt || '(none)';
+    document.getElementById('respBody'   ).textContent = formatBody(body);
+}
+function showError(err){
+    showResponse('', 'Error', '', '', 0);
+    document.getElementById('statusLine').textContent = 'Error: ' + err.message;
+}
+function formatBody(text){
+    try{ return JSON.stringify(JSON.parse(text), null, 2); }
+    catch(e){ return text; }
+}
+</script>
+</body>
+</html>
