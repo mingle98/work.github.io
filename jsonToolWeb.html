@@ -199,6 +199,13 @@
         .CodeMirror .search-highlight {
             background: #fff49b !important;
         }
+        .CodeMirror-foldgutter { width: 15px; }
+        .CodeMirror-foldgutter-open:after { content: "▾"; }
+        .CodeMirror-foldgutter-folded:after { content: "▸"; }
+        .CodeMirror-foldgutter-open, .CodeMirror-foldgutter-folded {
+            cursor: pointer;
+            color: #666;
+        }
     </style>
 </head>
 
@@ -292,11 +299,23 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/edit/closebrackets.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/edit/matchbrackets.min.js"></script>
     <script src="https://cdn.bootcdn.net/ajax/libs/jsondiffpatch/0.5.0/jsondiffpatch.umd.js"></script>
-    <script src="https://cdn.bootcdn.net/ajax/libs/jsondiffpatch/0.5.0/jsondiffpatch-formatters.min.js"></script>
-
+    <!-- <script src="https://cdn.bootcdn.net/ajax/libs/jsondiffpatch/0.5.0/jsondiffpatch-formatters.min.js"></script> -->
+    <!-- 在依赖脚本部分添加折叠插件 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/fold/foldcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/fold/foldgutter.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/fold/brace-fold.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/fold/indent-fold.min.js"></script>
+    
     <script>
         /* ============ CodeMirror 初始化 ============ */
         const cmOpts = {
+            // 新增折叠相关配置
+            foldGutter: true,
+            gutters: [
+                'CodeMirror-linenumbers',
+                'CodeMirror-foldgutter',
+                'CodeMirror-lint-markers'
+            ],
             mode: {
                 name: "javascript",
                 json: true
@@ -353,21 +372,41 @@
             highlights = [];
         }
 
+        // 修改搜索函数
         function searchKeyword() {
             const kw = document.getElementById('searchKeyword').value.trim();
             const src = document.getElementById('searchSrc').value;
             clearHighlight();
             if (!kw) return;
+
+            let firstMatchLine = null;
             const targets = src === 'A' ? [leftCM] : src === 'B' ? [rightCM] : [leftCM, rightCM];
-            targets.forEach(cm => cm.eachLine(line => {
-                if (line.text.includes(kw)) {
-                    cm.addLineClass(line, 'background', 'search-highlight');
-                    highlights.push({
-                        cm,
-                        line
-                    });
-                }
-            }));
+            
+            targets.forEach(cm => {
+                cm.eachLine(line => {
+                    if (line.text.includes(kw)) {
+                        cm.addLineClass(line, 'background', 'search-highlight');
+                        highlights.push({ cm, line });
+                        
+                        // 记录第一个匹配行
+                        if (!firstMatchLine) {
+                            firstMatchLine = {
+                                cm: cm,
+                                line: cm.getLineNumber(line)
+                            };
+                        }
+                    }
+                });
+            });
+
+            // 自动滚动到第一个匹配行
+            if (firstMatchLine) {
+                setTimeout(() => {
+                    const pos = { line: firstMatchLine.line, ch: 0 };
+                    firstMatchLine.cm.scrollIntoView(pos, 100); // 100ms动画
+                    firstMatchLine.cm.setCursor(pos); // 定位光标
+                }, 100);
+            }
         }
 
         /* ============ 路径查询 ============ */
