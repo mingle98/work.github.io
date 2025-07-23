@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>JSON 工具：格式化 / 压缩 / Diff / 查询 / 搜索</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+
+    <!-- CodeMirror -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/idea.min.css">
+    <!-- jsondiffpatch 样式 -->
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/jsondiffpatch/0.5.0/formatters-styles/html.css">
+
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: Arial, Helvetica, sans-serif
+        }
+
+        body {
+            margin: 0;
+            background: #f5f5f5
+        }
+
+        header {
+            background: #20232a;
+            color: #61dafb;
+            font-size: 22px;
+            padding: 14px 24px
+        }
+
+        .container {
+            padding: 18px;
+            max-width: 1400px;
+            margin: auto
+        }
+
+        /* 编辑器 --------------------------- */
+        .editors {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap
+        }
+
+        .editor-box {
+            flex: 1 1 480px;
+            display: flex;
+            flex-direction: column
+        }
+
+        .editor-header {
+            display: flex;
+            /* justify-content: space-between; */
+            align-items: center;
+            margin-bottom: 4px
+        }
+
+        .editor-title {
+            display: inline-block;
+            padding-left: 4px;
+            border-left: 6px solid #000000;
+            font-weight: bold;
+            margin-right: 20px;
+        }
+
+        #leftEditor,
+        #rightEditor {
+            height: 360px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            overflow: hidden
+        }
+
+        /* 通用按钮 ------------------------- */
+        .btn {
+            border: none;
+            border-radius: 4px;
+            padding: 6px 12px;
+            font-size: 13px;
+            cursor: pointer;
+            color: #fff
+        }
+
+        .btn.blue {
+            background: #61dafb
+        }
+
+        .btn.blue:hover {
+            background: #4dbdff
+        }
+
+        .btn.gray {
+            background: #888
+        }
+
+        .btn.gray:hover {
+            background: #666
+        }
+
+        .btn.red {
+            background: #e74c3c
+        }
+
+        .btn.red:hover {
+            background: #d62c1a
+        }
+
+        .btn.green {
+            background: #2ecc71
+        }
+
+        .btn.green:hover {
+            background: #27b25d
+        }
+
+        /* 工具栏（搜索/路径查询） ---------- */
+        .tool-panel {
+            margin-top: 18px;
+            background: #fff;
+            padding: 14px;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px
+        }
+
+        .tool-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap
+        }
+
+        .tool-row label {
+            width: 100px;
+            font-weight: bold
+        }
+
+        .tool-row select,
+        .tool-row input {
+            padding: 6px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 15px
+        }
+
+        input[placeholder] {
+            flex: 1 1 260px
+        }
+
+        /* 结果盒子 ------------------------- */
+        .result-box {
+            margin-top: 20px;
+            background: #fff;
+            border-radius: 6px;
+            padding: 16px;
+            overflow-x: auto;
+            display: none
+        }
+
+        .result-box h3 {
+            margin: 0 0 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px
+        }
+
+        .code-view {
+            margin: 0;
+            background: #272822;
+            color: #f8f8f2;
+            padding: 12px;
+            border-radius: 4px;
+            white-space: pre-wrap
+        }
+
+        /* Diff 区域 ------------------------ */
+        .diff-panel {
+            margin-top: 18px;
+            background: #fff;
+            border-radius: 6px;
+            padding: 14px
+        }
+
+        .diff-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px
+        }
+
+        .diff-title {
+            font-weight: bold;
+            font-size: 16px
+        }
+
+        /* 搜索高亮行 */
+        .CodeMirror .search-highlight {
+            background: #fff49b !important;
+        }
+    </style>
+</head>
+
+<body>
+    <header>JSON 工具：格式化 / 压缩 / Diff / 查询 / 搜索</header>
+
+    <div class="container">
+
+        <!-- ① 左右编辑器 -->
+        <div class="editors">
+            <!-- JSON-A -->
+            <div class="editor-box">
+                <div class="editor-header">
+                    <span class="editor-title">JSON A</span>
+                    <div>
+                        <button class="btn blue" onclick="formatEditor(leftCM)">格式化</button>
+                        <button class="btn gray" onclick="minifyEditor(leftCM)">压缩</button>
+                        <button class="btn red" onclick="leftCM.setValue('')">清空</button>
+                        <button class="btn green" onclick="copyEditor(leftCM,this)">复制</button>
+                    </div>
+                </div>
+                <div id="leftEditor"></div>
+            </div>
+            <!-- JSON-B -->
+            <div class="editor-box">
+                <div class="editor-header">
+                    <span class="editor-title">JSON B</span>
+                    <div>
+                        <button class="btn blue" onclick="formatEditor(rightCM)">格式化</button>
+                        <button class="btn gray" onclick="minifyEditor(rightCM)">压缩</button>
+                        <button class="btn red" onclick="rightCM.setValue('')">清空</button>
+                        <button class="btn green" onclick="copyEditor(rightCM,this)">复制</button>
+                    </div>
+                </div>
+                <div id="rightEditor"></div>
+            </div>
+        </div>
+
+        <!-- ② 工具栏（搜索 & 路径查询） -->
+        <div class="tool-panel">
+            <!-- 关键字搜索 -->
+            <div class="tool-row">
+                <label>关键字搜索：</label>
+                <select id="searchSrc">
+                    <option value="ALL">全部</option>
+                    <option value="A">JSON A</option>
+                    <option value="B">JSON B</option>
+                </select>
+                <input type="text" id="searchKeyword" placeholder="输入关键字，如 Shanghai">
+                <button class="btn blue" onclick="searchKeyword()">搜索</button>
+                <button class="btn gray" onclick="clearHighlight()">清除高亮</button>
+            </div>
+            <!-- 路径查询 -->
+            <div class="tool-row">
+                <label>路径查询：</label>
+                <select id="querySrc">
+                    <option value="A">JSON A</option>
+                    <option value="B">JSON B</option>
+                </select>
+                <input type="text" id="queryPath" placeholder="输入属性路径，如 address.city">
+                <button class="btn blue" onclick="runQuery()">查询</button>
+            </div>
+        </div>
+
+        <!-- 查询结果 -->
+        <div id="queryResultBox" class="result-box">
+            <h3>
+                查询结果
+                <button id="copyQueryBtn" class="btn green" style="display:none" onclick="copyQuery(this)">复制结果</button>
+            </h3>
+            <pre id="queryResultContent" class="code-view"></pre>
+        </div>
+
+        <!-- ③ Diff 独立功能区 -->
+        <div class="diff-panel">
+            <div class="diff-header">
+                <span class="diff-title">JSON Diff 对比</span>
+                <div>
+                    <button class="btn blue" onclick="doDiff()">对比差异</button>
+                    <button class="btn green" id="copyDeltaBtn" style="display:none" onclick="copyDelta(this)">复制差异(JSON)</button>
+                </div>
+            </div>
+            <div id="diffContent"><!-- 结果填充 --></div>
+        </div>
+
+    </div>
+
+    <!-- 依赖脚本 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/edit/closebrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/jsondiffpatch/0.5.0/jsondiffpatch.umd.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/jsondiffpatch/0.5.0/jsondiffpatch-formatters.min.js"></script>
+
+    <script>
+        /* ============ CodeMirror 初始化 ============ */
+        const cmOpts = {
+            mode: {
+                name: "javascript",
+                json: true
+            },
+            theme: "idea",
+            lineNumbers: true,
+            autoCloseBrackets: true,
+            matchBrackets: true,
+            lineWrapping: true
+        };
+        const leftCM = CodeMirror(document.getElementById('leftEditor'), {
+            ...cmOpts,
+            value: `{\n  "id":1,"name":"张三","hobbies":["篮球","阅读"],"address":{"city":"Shanghai"}}`
+        });
+        const rightCM = CodeMirror(document.getElementById('rightEditor'), {
+            ...cmOpts,
+            value: `{\n  "id":1,"name":"李四","hobbies":["足球","游戏"],"address":{"city":"Beijing"}}`
+        });
+
+        /* ============ 基础编辑操作 ============ */
+        function formatEditor(cm) {
+            try {
+                if (cm.getValue() === '') return;
+                cm.setValue(JSON.stringify(JSON.parse(cm.getValue()), null, 2));
+            } catch (e) {
+                alert('JSON 解析错误：' + e.message);
+            }
+        }
+
+        function minifyEditor(cm) {
+            try {
+                if (cm.getValue() === '') return;
+                cm.setValue(JSON.stringify(JSON.parse(cm.getValue())));
+            } catch (e) {
+                alert('JSON 解析错误：' + e.message);
+            }
+        }
+
+        function copyEditor(cm, btn) {
+            navigator.clipboard.writeText(cm.getValue()).then(() => {
+                btn.textContent = '已复制';
+                setTimeout(() => btn.textContent = '复制', 1000);
+            });
+        }
+
+        /* ============ 搜索高亮 ============ */
+        let highlights = [];
+
+        function clearHighlight() {
+            highlights.forEach(({
+                cm,
+                line
+            }) => cm.removeLineClass(line, 'background', 'search-highlight'));
+            highlights = [];
+        }
+
+        function searchKeyword() {
+            const kw = document.getElementById('searchKeyword').value.trim();
+            const src = document.getElementById('searchSrc').value;
+            clearHighlight();
+            if (!kw) return;
+            const targets = src === 'A' ? [leftCM] : src === 'B' ? [rightCM] : [leftCM, rightCM];
+            targets.forEach(cm => cm.eachLine(line => {
+                if (line.text.includes(kw)) {
+                    cm.addLineClass(line, 'background', 'search-highlight');
+                    highlights.push({
+                        cm,
+                        line
+                    });
+                }
+            }));
+        }
+
+        /* ============ 路径查询 ============ */
+        function runQuery() {
+            const src = document.getElementById('querySrc').value;
+            const path = document.getElementById('queryPath').value.trim();
+            if (!path) {
+                alert('请输入属性路径！');
+                return;
+            }
+            let obj;
+            try {
+                obj = JSON.parse(src === 'A' ? leftCM.getValue() : rightCM.getValue());
+            } catch (e) {
+                alert('JSON 无效');
+                return;
+            }
+            const res = path.split('.').reduce((cur, k) => cur == null ? undefined : cur[/^\d+$/.test(k) ? Number(k) : k], obj);
+            const box = document.getElementById('queryResultBox');
+            const pre = document.getElementById('queryResultContent');
+            const copy = document.getElementById('copyQueryBtn');
+            if (res === undefined) {
+                pre.textContent = '未找到对应路径的数据 (undefined)';
+                copy.style.display = 'none';
+            } else {
+                pre.textContent = typeof res === 'object' ? JSON.stringify(res, null, 2) : String(res);
+                copy.style.display = 'inline-block';
+            }
+            box.style.display = 'block';
+        }
+
+        function copyQuery(btn) {
+            navigator.clipboard.writeText(document.getElementById('queryResultContent').textContent).then(() => {
+                btn.textContent = '已复制';
+                setTimeout(() => btn.textContent = '复制结果', 1000);
+            });
+        }
+
+        /* ============ Diff ============ */
+        let deltaCache = null;
+
+        function doDiff() {
+            let a, b;
+            try {
+                a = JSON.parse(leftCM.getValue());
+            } catch {
+                alert('左侧 JSON 无效');
+                return;
+            }
+            try {
+                b = JSON.parse(rightCM.getValue());
+            } catch {
+                alert('右侧 JSON 无效');
+                return;
+            }
+            deltaCache = jsondiffpatch.diff(a, b);
+            const out = document.getElementById('diffContent');
+            out.innerHTML = deltaCache ? jsondiffpatch.formatters.html.format(deltaCache, a) :
+                '<p style="color:green;font-weight:bold">两个 JSON 完全一致！</p>';
+            document.getElementById('copyDeltaBtn').style.display = deltaCache ? 'inline-block' : 'none';
+        }
+
+        function copyDelta(btn) {
+            if (!deltaCache) return;
+            navigator.clipboard.writeText(JSON.stringify(deltaCache)).then(() => {
+                btn.textContent = '已复制';
+                setTimeout(() => btn.textContent = '复制差异(JSON)', 1000);
+            });
+        }
+    </script>
+</body>
+
+</html>
