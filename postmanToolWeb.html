@@ -85,13 +85,13 @@
             <option>text/plain</option>
             <option>application/xml</option>
         </select>
-        <button id="formatJson" class="btn-gray" title="格式化 JSON">Format JSON</button>
+        <!-- <button id="formatJson" class="btn-gray" title="格式化 JSON">Format JSON</button> -->
     </div>
 
     <!-- Body 输入（Ace） -->
     <div class="row column">
         <label>Body (raw)：</label>
-        <div id="bodyEditor">// 在此输入 JSON、XML、表单串等原始数据</div>
+        <div id="bodyEditor">// 在此输入 JSON、表单串等原始数据</div>
     </div>
 
     <!-- 响应展示 -->
@@ -128,7 +128,7 @@ editor.setOptions({
 editor.on('blur', () => tryFormatJson());
 
 /* 点击 Format JSON 手动格式化 */
-document.getElementById('formatJson').onclick = tryFormatJson;
+// document.getElementById('formatJson').onclick = tryFormatJson;
 function tryFormatJson(){
     const txt = editor.getValue().trim();
     if(!txt) return;
@@ -136,7 +136,8 @@ function tryFormatJson(){
         const formatted = JSON.stringify(JSON.parse(txt), null, 2);
         editor.setValue(formatted, -1);
     }catch(e){
-        alert('不是有效 JSON：' + e.message);
+        // alert('不是有效 JSON：' + e.message);
+        console.log('不是有效 JSON：', e.message);
     }
 }
 
