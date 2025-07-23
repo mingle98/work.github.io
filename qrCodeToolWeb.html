@@ -134,7 +134,8 @@ input[type="color"]{
 .btn-danger{background:var(--danger);color:#fff}
 .btn-danger:hover{filter:brightness(1.1)}
 .btn-disabled{opacity:.5;cursor:not-allowed}
-#downloadBtn{width:200px}
+#downloadBtn{width:200px; display:none;}
+#downloadBtn.show{display:block}
 
 /* --------  自定义文件上传  -------- */
 .file-wrap{position:relative;display:inline-block;width:100%}
@@ -216,7 +217,7 @@ footer{margin:2rem 0;text-align:center;font-size:.85rem;color:#8b8f97}
 
             <div class="form-item">
                 <label>尺寸 (px)</label>
-                <input type="number" id="qrSize" value="300" min="150" max="1000">
+                <input type="number" id="qrSize" value="300" min="150" max="500">
             </div>
 
             <div class="form-item">
@@ -381,6 +382,7 @@ $(function(){
 
         // 显/隐蒙层
         $('#qrMask').toggleClass('show', empty);
+        $('#downloadBtn').toggleClass('show', !empty);
     }
     $('#generateBtn').on('click',updateQRCode);
     $('.left-panel').on('change keyup','input:not(#logoInput):not([type=file]),select',updateQRCode);
